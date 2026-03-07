@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crs-multi-retrieval"
+version = "1.0.0"
+description = "CRS using Multi Retrieval LangGraph agent for autonomous vulnerability patching"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "langchain-core",
+    "langchain-community",
+    "langgraph",
+    "litellm",
+    "ast-grep-py",
+    "pydantic",
+]
+
+[project.scripts]
+run_patcher = "patcher:main"
+
+[tool.setuptools]
+py-modules = ["patcher"]
+
+[tool.setuptools.packages.find]
+include = ["agents", "agents.*", "crete", "crete.*"]
+
+[tool.setuptools.package-data]
+agents = ["*.md"]

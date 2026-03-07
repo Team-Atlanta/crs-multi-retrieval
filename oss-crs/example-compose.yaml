@@ -1,0 +1,31 @@
+##############################################################################
+#                        CRS Compose Configuration                           #
+#          Example for crs-multi-retrieval (builder sidecar via crs.yaml)     #
+##############################################################################
+
+# --- General Settings -------------------------------------------------------
+run_env: local
+docker_registry: local
+
+# --- Infrastructure ---------------------------------------------------------
+oss_crs_infra:
+  cpuset: "0-1"
+  memory: "8G"
+
+# --- CRS (crs-multi-retrieval) ---------------------------------------------
+# Builder sidecar is declared in crs.yaml (inc-builder-asan with run_snapshot: true).
+# No separate oss-crs-builder compose entry needed.
+crs-multi-retrieval:
+  source:
+    local_path: /path/to/crs-multi-retrieval           # UPDATE: local filesystem path
+  cpuset: "2-7"                                        # UPDATE: available CPU cores
+  memory: "16G"                                        # UPDATE: available memory
+  llm_budget: 10                                       # LLM budget in USD
+  additional_env:
+    CRS_AGENT: multi_retrieval
+    MULTI_RETRIEVAL_MODEL: o4-mini
+    # AGENT_TIMEOUT: "3600"                             # Optional: seconds, 0 = no limit (default)
+
+# --- LLM Configuration -----------------------------------------------------
+llm_config:
+  litellm_config: /path/to/sample-litellm-config.yaml  # UPDATE: path to litellm config

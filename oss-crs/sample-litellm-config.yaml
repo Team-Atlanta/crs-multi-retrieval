@@ -1,0 +1,20 @@
+model_list:
+  #########################################
+  # OPENAI API (direct or via external LiteLLM)
+  # model_name = what the agent sends in API requests
+  # litellm_params.model = provider/model used by LiteLLM
+  #########################################
+
+  # o4-mini (primary model for multi-retrieval agent)
+  - model_name: o4-mini
+    litellm_params:
+      model: openai/o4-mini
+      api_base: os.environ/EXTERNAL_LITELLM_API_BASE
+      api_key: os.environ/EXTERNAL_LITELLM_API_KEY
+
+  # Gemini 2.5 Pro (alternative model)
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_base: os.environ/EXTERNAL_LITELLM_API_BASE
+      api_key: os.environ/EXTERNAL_LITELLM_API_KEY

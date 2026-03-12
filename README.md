@@ -1,8 +1,8 @@
 # crs-multi-retrieval
 
-A [CRS](https://github.com/oss-crs) (Cyber Reasoning System) that uses a Multi Retrieval LangGraph agent to autonomously find and patch vulnerabilities in open-source projects.
+A [CRS](https://github.com/oss-crs) (Cyber Reasoning System) that uses the MultiRetrieval agent to autonomously find and patch vulnerabilities in open-source projects.
 
-Given proof-of-vulnerability (POV) inputs that crash a target binary, the agent analyzes the crashes, retrieves relevant code, generates candidate patches, evaluates them, and submits a verified patch — all autonomously.
+MultiRetrieval follows a two-step workflow: it first analyzes the crash to gather relevant code context, then iteratively generates and refines patches. It uses multiple code-query mechanisms to expand context as needed during patch synthesis, helping the system improve patches steadily across iterations.
 
 ## How it works
 

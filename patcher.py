@@ -39,7 +39,7 @@ LLM_API_URL = os.environ.get("OSS_CRS_LLM_API_URL", "")
 LLM_API_KEY = os.environ.get("OSS_CRS_LLM_API_KEY", "")
 
 # Builder sidecar module name (must match a run_snapshot module in crs.yaml)
-BUILDER_MODULE = os.environ.get("BUILDER_MODULE", "inc-builder-asan")
+BUILDER_MODULE = os.environ.get("BUILDER_MODULE", "inc-builder")
 SUBMISSION_FLUSH_WAIT_SECS = int(os.environ.get("SUBMISSION_FLUSH_WAIT_SECS", "12"))
 
 # Agent selection
@@ -119,12 +119,20 @@ def setup_source() -> Path | None:
         subprocess.run(
             ["git", "add", "-A"], cwd=worktree_dir, capture_output=True, timeout=60
         )
-        subprocess.run(
+        commit_proc = subprocess.run(
             ["git", "commit", "-m", "initial source"],
             cwd=worktree_dir,
             capture_output=True,
             timeout=60,
         )
+        if commit_proc.returncode != 0:
+            stderr = (
+                commit_proc.stderr.decode(errors="replace")
+                if isinstance(commit_proc.stderr, bytes)
+                else str(commit_proc.stderr)
+            )
+            logger.error("Failed to create initial commit: %s", stderr.strip())
+            return None
 
     return worktree_dir
 

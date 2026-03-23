@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from libCRS.base import DataType
+from libCRS.base import DataType, SourceType
 from libCRS.cli.main import init_crs_utils
 
 logging.basicConfig(
@@ -89,50 +89,44 @@ def setup_source() -> Path | None:
         capture_output=True,
     )
 
-    source_dir = WORK_DIR / "src"
-    source_dir.mkdir(parents=True, exist_ok=True)
+    download_root = WORK_DIR / "src"
+    download_root.mkdir(parents=True, exist_ok=True)
 
     try:
-        crs.download_build_output("src", source_dir)
+        crs.download_source(SourceType.TARGET_SOURCE, download_root)
+        worktree_dir = download_root
     except Exception as e:
         logger.error("Failed to download source: %s", e)
         return None
 
-    # Locate the project directory: try "repo/" first, then any subdir with .git.
-    project_dir = source_dir / "repo"
-    if not project_dir.exists():
-        for d in source_dir.iterdir():
-            if d.is_dir() and (d / ".git").exists():
-                project_dir = d
-                break
+    worktree_dir = worktree_dir.resolve()
+    download_root = download_root.resolve()
 
-    # If still no project_dir, use "repo/" or first subdir as fallback.
-    if not project_dir.exists():
-        subdirs = [d for d in source_dir.iterdir() if d.is_dir()]
-        if subdirs:
-            project_dir = subdirs[0]
-        else:
-            logger.error("No project directory found in %s", source_dir)
-            return None
+    if worktree_dir != download_root and download_root not in worktree_dir.parents:
+        logger.error(
+            "libCRS returned worktree dir outside downloaded source tree: %s",
+            worktree_dir,
+        )
+        return None
 
     # Initialize a git repo if the source doesn't have one.
     # The agent needs git to generate patches (git add -A && git diff --cached).
-    if not (project_dir / ".git").exists():
-        logger.info("No .git found in %s, initializing git repo", project_dir)
+    if not (worktree_dir / ".git").exists():
+        logger.info("No .git found in %s, initializing git repo", worktree_dir)
         subprocess.run(
-            ["git", "init"], cwd=project_dir, capture_output=True, timeout=60
+            ["git", "init"], cwd=worktree_dir, capture_output=True, timeout=60
         )
         subprocess.run(
-            ["git", "add", "-A"], cwd=project_dir, capture_output=True, timeout=60
+            ["git", "add", "-A"], cwd=worktree_dir, capture_output=True, timeout=60
         )
         subprocess.run(
             ["git", "commit", "-m", "initial source"],
-            cwd=project_dir,
+            cwd=worktree_dir,
             capture_output=True,
             timeout=60,
         )
 
-    return project_dir
+    return worktree_dir
 
 
 def wait_for_builder() -> bool:

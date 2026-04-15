@@ -26,7 +26,6 @@ def run(
     *,
     language: str = "c",
     sanitizer: str = "address",
-    builder: str,
     ref_diff: str | None = None,
 ) -> bool:
     """Run the agent autonomously.
@@ -36,7 +35,7 @@ def run(
     The agent should:
     1. Analyze the crash logs
     2. Edit source files to fix the vulnerability
-    3. Build and test using libCRS commands (pass --builder to each)
+    3. Build and test using libCRS commands
     4. Write verified .diff file(s) to patches_dir
     5. Verify the patch fixes ALL POV variants
 

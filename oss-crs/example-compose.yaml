@@ -1,6 +1,6 @@
 ##############################################################################
 #                        CRS Compose Configuration                           #
-#          Example for crs-multi-retrieval (builder sidecar via crs.yaml)     #
+#                     Example for crs-multi-retrieval                         #
 ##############################################################################
 
 # --- General Settings -------------------------------------------------------
@@ -13,8 +13,7 @@ oss_crs_infra:
   memory: "8G"
 
 # --- CRS (crs-multi-retrieval) ---------------------------------------------
-# Builder sidecar is declared in crs.yaml (inc-builder-asan with run_snapshot: true).
-# No separate oss-crs-builder compose entry needed.
+# Builder sidecar is injected by the framework automatically.
 crs-multi-retrieval:
   source:
     local_path: /path/to/crs-multi-retrieval           # UPDATE: local filesystem path

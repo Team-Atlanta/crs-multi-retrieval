@@ -86,7 +86,6 @@ def run(
     *,
     language: str = "c",
     sanitizer: str = "address",
-    builder: str,
     ref_diff: str | None = None,
 ) -> bool:
     """Run the multi-retrieval agent to fix a vulnerability.
@@ -106,7 +105,6 @@ def run(
     # Create environment pool
     pool = EnvironmentPool(
         crs=crs,
-        builder=builder,
         source_directory=source_dir,
     )
 

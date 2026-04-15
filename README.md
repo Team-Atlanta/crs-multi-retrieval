@@ -49,7 +49,7 @@ MultiRetrieval follows a two-step workflow: it first analyzes the crash to gathe
 
 1. **`run_patcher`** fetches POVs, the target source tree, and an optional reference diff for delta mode, then reproduces crashes on the unpatched build via the builder sidecar.
 2. All POVs are treated as variants of the same vulnerability and passed to the **Multi Retrieval agent** in one session.
-3. The agent builds a detection context from POV blobs, retrieves relevant files and code ranges, generates candidate patches, and evaluates them through **libCRS** (`apply-patch-build`, `run-pov`, `run-test`) using the builder sidecar.
+3. The agent builds a detection context from POV blobs, retrieves relevant files and code ranges, generates candidate patches, and evaluates them through **libCRS** (`apply-patch-build`, `run-pov`, `apply-patch-test`) using the builder sidecar.
 4. The best verified `.diff` is written to `/patches/`, where a daemon auto-submits it to the oss-crs framework.
 
 The agent is language-agnostic at the orchestration layer and supports `c`, `c++`, and `jvm` targets declared in `oss-crs/crs.yaml`.
@@ -89,7 +89,7 @@ oss-crs/
 
 - **[oss-crs](https://github.com/oss-crs/oss-crs)** — the CRS framework (`crs-compose` CLI)
 
-Builder sidecars for incremental builds are declared in `oss-crs/crs.yaml` (`snapshot: true` / `run_snapshot: true`) and handled automatically by the framework — no separate builder setup is needed.
+Builder and runner sidecars are injected automatically by the framework — no separate builder setup is needed.
 
 ## Quick start
 
@@ -129,7 +129,6 @@ crs-compose up -f crs-compose.yaml
 | `CRS_AGENT` | `multi_retrieval` | Agent module name (maps to `agents/<name>.py`) |
 | `MULTI_RETRIEVAL_MODEL` | `o4-mini` | Primary model used by the multi-retrieval agent |
 | `MULTI_RETRIEVAL_BACKUP_MODEL` | `gemini-2.5-pro` | Backup model used when the workflow falls back to a second LLM |
-| `BUILDER_MODULE` | `inc-builder-asan` | Builder sidecar module name (must match a `run_snapshot` entry in `crs.yaml`) |
 | `SUBMISSION_FLUSH_WAIT_SECS` | `12` | Delay before exit so the patch submission watcher can flush |
 
 Available models in the sample LiteLLM config:

@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from libCRS.base import DataType, SourceType
+from libCRS.base import DataType
 from libCRS.cli.main import init_crs_utils
 
 logging.basicConfig(
@@ -30,7 +30,6 @@ logger = logging.getLogger("patcher")
 
 # --- Configuration (from oss-crs framework environment variables) ---
 
-SNAPSHOT_IMAGE = os.environ.get("OSS_CRS_SNAPSHOT_IMAGE", "")
 TARGET = os.environ.get("OSS_CRS_TARGET", "")
 HARNESS = os.environ.get("OSS_CRS_TARGET_HARNESS", "")
 LANGUAGE = os.environ.get("FUZZING_LANGUAGE", "c")
@@ -38,8 +37,6 @@ SANITIZER = os.environ.get("SANITIZER", "address")
 LLM_API_URL = os.environ.get("OSS_CRS_LLM_API_URL", "")
 LLM_API_KEY = os.environ.get("OSS_CRS_LLM_API_KEY", "")
 
-# Builder sidecar module name (must match a run_snapshot module in crs.yaml)
-BUILDER_MODULE = os.environ.get("BUILDER_MODULE", "inc-builder")
 SUBMISSION_FLUSH_WAIT_SECS = int(os.environ.get("SUBMISSION_FLUSH_WAIT_SECS", "12"))
 
 # Agent selection
@@ -49,6 +46,7 @@ CRS_AGENT = os.environ.get("CRS_AGENT", "multi_retrieval")
 
 # Framework directories
 WORK_DIR = Path("/work")
+SRC_DIR = Path("/src")
 PATCHES_DIR = Path("/patches")
 POV_DIR = WORK_DIR / "povs"
 DIFF_DIR = WORK_DIR / "diffs"
@@ -81,33 +79,31 @@ def _reset_source(source_dir: Path) -> None:
 
 
 def setup_source() -> Path | None:
-    """Download source code and locate the project source directory."""
+    """Download build-output /src and prepare it as the working directory."""
     # Ensure safe.directory is set system-wide so git works regardless of
     # file ownership (downloaded source may have different uid).
-    subprocess.run(
+    safe_dir_proc = subprocess.run(
         ["git", "config", "--system", "--add", "safe.directory", "*"],
         capture_output=True,
     )
-
-    download_root = WORK_DIR / "src"
-    download_root.mkdir(parents=True, exist_ok=True)
+    if safe_dir_proc.returncode != 0:
+        # Fall back to --global if --system fails (e.g. no /etc write access)
+        fallback = subprocess.run(
+            ["git", "config", "--global", "--add", "safe.directory", "*"],
+            capture_output=True,
+        )
+        if fallback.returncode != 0:
+            logger.warning(
+                "Failed to configure git safe.directory in both --system and --global scopes"
+            )
 
     try:
-        crs.download_source(SourceType.TARGET_SOURCE, download_root)
-        worktree_dir = download_root
+        crs.download_build_output("src", SRC_DIR)
     except Exception as e:
-        logger.error("Failed to download source: %s", e)
+        logger.error("Failed to download /src build output via libCRS: %s", e)
         return None
 
-    worktree_dir = worktree_dir.resolve()
-    download_root = download_root.resolve()
-
-    if worktree_dir != download_root and download_root not in worktree_dir.parents:
-        logger.error(
-            "libCRS returned worktree dir outside downloaded source tree: %s",
-            worktree_dir,
-        )
-        return None
+    worktree_dir = SRC_DIR.resolve()
 
     # Initialize a git repo if the source doesn't have one.
     # The agent needs git to generate patches (git add -A && git diff --cached).
@@ -137,27 +133,11 @@ def setup_source() -> Path | None:
     return worktree_dir
 
 
-def wait_for_builder() -> bool:
-    """Fail-fast DNS check for the builder sidecar.
-
-    Full health polling is handled internally by ``crs.run_pov()`` /
-    ``crs.apply_patch_build()`` (via ``_wait_for_builder_health``), so we
-    only verify DNS resolution here to catch configuration errors early.
-    """
-    try:
-        domain = crs.get_service_domain(BUILDER_MODULE)
-        logger.info("Builder sidecar '%s' resolved to %s", BUILDER_MODULE, domain)
-        return True
-    except RuntimeError as e:
-        logger.error("Failed to resolve builder domain for '%s': %s", BUILDER_MODULE, e)
-        return False
-
-
-def _read_response_streams(response_dir: Path, prefix: str) -> str:
+def _read_response_streams(response_dir: Path) -> str:
     """Read raw stdout/stderr for a libCRS response directory transparently."""
     parts: list[str] = []
     for stream in ("stdout", "stderr"):
-        path = response_dir / f"{prefix}_{stream}.log"
+        path = response_dir / f"{stream}.log"
         if not path.exists():
             continue
         text = path.read_text(errors="replace")
@@ -177,10 +157,10 @@ def reproduce_crash(pov_path: Path) -> str:
     response_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        exit_code = crs.run_pov(pov_path, HARNESS, "base", response_dir, BUILDER_MODULE)
+        exit_code = crs.run_pov(pov_path, HARNESS, response_dir)
         logger.info("reproduce_crash run-pov exit code: %d", exit_code)
 
-        stream_output = _read_response_streams(response_dir, "pov")
+        stream_output = _read_response_streams(response_dir)
         if stream_output:
             return f"run-pov exit code: {exit_code}\n\n{stream_output}"
 
@@ -233,7 +213,6 @@ def process_povs(
         agent_work_dir,
         language=LANGUAGE,
         sanitizer=SANITIZER,
-        builder=BUILDER_MODULE,
         ref_diff=ref_diff,
     )
 
@@ -266,19 +245,9 @@ def process_povs(
 
 def main():
     logger.info(
-        "Starting patcher: target=%s harness=%s agent=%s snapshot=%s",
-        TARGET,
-        HARNESS,
-        CRS_AGENT,
-        SNAPSHOT_IMAGE or "(none)",
+        "Starting patcher: target=%s harness=%s agent=%s",
+        TARGET, HARNESS, CRS_AGENT,
     )
-
-    if not SNAPSHOT_IMAGE:
-        logger.error("OSS_CRS_SNAPSHOT_IMAGE is not set.")
-        logger.error(
-            "Declare snapshot: true in target_build_phase and run_snapshot: true in crs_run_phase (crs.yaml)."
-        )
-        sys.exit(1)
 
     global crs
     crs = init_crs_utils()
@@ -340,10 +309,6 @@ def main():
     if DIFF_DIR.exists() and ref_diff_path.is_file():
         ref_diff = ref_diff_path.read_text()
         logger.info("Reference diff found (%d chars)", len(ref_diff))
-
-    if not wait_for_builder():
-        logger.error("Cannot proceed without builder sidecar")
-        sys.exit(1)
 
     if process_povs(pov_files, source_dir, agent, ref_diff=ref_diff):
         # Wait for the submission daemon to flush (batch_time=10s) before exiting.

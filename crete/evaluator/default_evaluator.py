@@ -107,7 +107,7 @@ class DefaultEvaluator:
             logger.exception("Unknown error occurred during patch/build")
             return UnknownErrorAction(error=exc)
 
-        build_id = LibCRSEnvironment.read_build_id(response_dir)
+        rebuild_id = LibCRSEnvironment.read_rebuild_id(response_dir)
 
         # Step 2: Run PoV
         try:
@@ -122,7 +122,7 @@ class DefaultEvaluator:
                     pov_stdout, pov_stderr = environment.run_pov(
                         pov_path=Path(pov_file.name),
                         harness_name=blob.harness_name,
-                        build_id=build_id,
+                        rebuild_id=rebuild_id,
                         response_dir=response_dir,
                     )
                 # Store stderr in context for JVM analyzers
@@ -143,7 +143,7 @@ class DefaultEvaluator:
         # Step 3: Run Tests
         try:
             environment.run_tests(
-                build_id=build_id,
+                patch_data=diff,
                 response_dir=response_dir,
             )
         except ChallengeTestFailedError as exc:

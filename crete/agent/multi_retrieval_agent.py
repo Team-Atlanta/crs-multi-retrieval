@@ -43,7 +43,7 @@ class MultiRetrievalPatchAgent:
         final_diff = None
         try:
             patch_state = self.workflow.invoke(
-                PatchState(repo_path=str(context["pool"].source_directory)),
+                PatchState(repo_path=str(context["pool"].patch_directory)),
                 {"recursion_limit": self.recursion_limit},
             )
 
@@ -74,7 +74,7 @@ class MultiRetrievalPatchAgent:
         try:
             self.workflow.set_llm(self._backup_llm)
             patch_state = self.workflow.invoke(
-                PatchState(repo_path=str(context["pool"].source_directory)),
+                PatchState(repo_path=str(context["pool"].patch_directory)),
                 {"recursion_limit": self.recursion_limit},
             )
             final_diff = patch_state["diff"]

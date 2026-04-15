@@ -1,6 +1,6 @@
 """LibCRS-backed environment replacing OssFuzzEnvironment.
 
-Uses libCRS API (apply_patch_build, run_pov, run_test) instead of
+Uses libCRS API (apply_patch_build, run_pov, apply_patch_test) instead of
 helper.py / Docker commands. Source restoration uses local git reset.
 """
 
@@ -23,18 +23,16 @@ class LibCRSEnvironment:
     """Environment backed by libCRS builder sidecar.
 
     Replaces OssFuzzEnvironment. All build/run operations delegate to
-    CRSUtils (apply_patch_build, run_pov, run_test) instead of
+    CRSUtils (apply_patch_build, run_pov, apply_patch_test) instead of
     helper.py shell commands.
     """
 
     def __init__(
         self,
         crs: Any,
-        builder: str,
         source_directory: Path,
     ) -> None:
         self._crs = crs
-        self._builder = builder
         self._source_directory = source_directory
 
     @property
@@ -43,19 +41,24 @@ class LibCRSEnvironment:
 
     def restore(self) -> None:
         """Reset source directory to HEAD using local git."""
-        for lock_file in self._source_directory.glob(".git/**/*.lock"):
+        self.restore_directory(self._source_directory)
+
+    @staticmethod
+    def restore_directory(directory: Path) -> None:
+        """Reset a git directory to HEAD."""
+        for lock_file in directory.glob(".git/**/*.lock"):
             logger.warning("Removing stale lock file: %s", lock_file)
             lock_file.unlink()
 
         subprocess.run(
             ["git", "reset", "--hard", "HEAD"],
-            cwd=self._source_directory,
+            cwd=directory,
             capture_output=True,
             timeout=60,
         )
         subprocess.run(
             ["git", "clean", "-fd"],
-            cwd=self._source_directory,
+            cwd=directory,
             capture_output=True,
             timeout=60,
         )
@@ -73,7 +76,7 @@ class LibCRSEnvironment:
             diff_file.close()
 
             exit_code = self._crs.apply_patch_build(
-                Path(diff_file.name), response_dir, self._builder
+                Path(diff_file.name), response_dir
             )
 
         return self._handle_build_result(exit_code, response_dir)
@@ -91,7 +94,7 @@ class LibCRSEnvironment:
         match patch_data:
             case Path():
                 exit_code = self._crs.apply_patch_build(
-                    patch_data, response_dir, self._builder
+                    patch_data, response_dir
                 )
             case bytes():
                 with tempfile.NamedTemporaryFile(
@@ -101,7 +104,7 @@ class LibCRSEnvironment:
                     diff_file.close()
 
                     exit_code = self._crs.apply_patch_build(
-                        Path(diff_file.name), response_dir, self._builder
+                        Path(diff_file.name), response_dir
                     )
 
         return self._handle_build_result(exit_code, response_dir)
@@ -110,7 +113,7 @@ class LibCRSEnvironment:
         self,
         pov_path: Path,
         harness_name: str,
-        build_id: str,
+        rebuild_id: str,
         response_dir: Path,
     ) -> tuple[str, str]:
         """Run a PoV via libCRS.
@@ -119,11 +122,11 @@ class LibCRSEnvironment:
         Raises ChallengePoVFoundError if crash detected (non-zero exit).
         """
         exit_code = self._crs.run_pov(
-            pov_path, harness_name, build_id, response_dir, self._builder
+            pov_path, harness_name, response_dir, rebuild_id
         )
 
-        stdout = self._read_log(response_dir, "pov_stdout.log")
-        stderr = self._read_log(response_dir, "pov_stderr.log")
+        stdout = self._read_log(response_dir, "stdout.log")
+        stderr = self._read_log(response_dir, "stderr.log")
 
         if exit_code != 0:
             raise ChallengePoVFoundError(
@@ -133,16 +136,30 @@ class LibCRSEnvironment:
 
         return stdout, stderr
 
-    def run_tests(self, build_id: str, response_dir: Path) -> tuple[str, str]:
-        """Run tests via libCRS.
+    def run_tests(self, patch_data: Path | bytes, response_dir: Path) -> tuple[str, str]:
+        """Run tests via libCRS apply_patch_test.
 
         Returns (stdout, stderr) on success.
         Raises ChallengeTestFailedError on non-zero exit.
         """
-        exit_code = self._crs.run_test(build_id, response_dir, self._builder)
+        match patch_data:
+            case Path():
+                exit_code = self._crs.apply_patch_test(
+                    patch_data, response_dir
+                )
+            case bytes():
+                with tempfile.NamedTemporaryFile(
+                    suffix=".diff", delete_on_close=False
+                ) as diff_file:
+                    diff_file.write(patch_data)
+                    diff_file.close()
 
-        stdout = self._read_log(response_dir, "test_stdout.log")
-        stderr = self._read_log(response_dir, "test_stderr.log")
+                    exit_code = self._crs.apply_patch_test(
+                        Path(diff_file.name), response_dir
+                    )
+
+        stdout = self._read_log(response_dir, "stdout.log")
+        stderr = self._read_log(response_dir, "stderr.log")
 
         if exit_code != 0:
             raise ChallengeTestFailedError(
@@ -156,8 +173,8 @@ class LibCRSEnvironment:
         self, exit_code: int, response_dir: Path
     ) -> tuple[str, str]:
         """Read build logs and raise on failure."""
-        stdout = self._read_log(response_dir, "build_stdout.log")
-        stderr = self._read_log(response_dir, "build_stderr.log")
+        stdout = self._read_log(response_dir, "stdout.log")
+        stderr = self._read_log(response_dir, "stderr.log")
 
         if exit_code != 0:
             raise ChallengeBuildFailedError(
@@ -168,17 +185,17 @@ class LibCRSEnvironment:
         return stdout, stderr
 
     @staticmethod
-    def read_build_id(response_dir: Path) -> str:
-        """Read the build_id written by libCRS after apply_patch_build.
+    def read_rebuild_id(response_dir: Path) -> str | None:
+        """Read the rebuild_id written by libCRS after apply_patch_build.
 
-        Falls back to ``"base"`` if the file does not exist (e.g. when
-        the build was never triggered).
+        Returns None if the file does not exist (e.g. when the build
+        was never triggered), signalling the base (unpatched) build.
         """
-        build_id_path = response_dir / "build_id"
-        if not build_id_path.exists():
-            logger.warning("build_id file not found in %s, defaulting to 'base'", response_dir)
-            return "base"
-        return build_id_path.read_text().strip()
+        rebuild_id_path = response_dir / "rebuild_id"
+        if not rebuild_id_path.exists():
+            logger.warning("rebuild_id file not found in %s, defaulting to base build", response_dir)
+            return None
+        return rebuild_id_path.read_text().strip()
 
     @staticmethod
     def _read_log(response_dir: Path, filename: str) -> str:

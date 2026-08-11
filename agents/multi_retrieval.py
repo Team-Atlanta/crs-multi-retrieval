@@ -4,7 +4,7 @@ Implements the agent interface (setup / run) using the crete framework's
 MultiRetrievalPatchAgent with a LangGraph-based patch workflow.
 Replaces LlmApiManager with direct ChatLiteLLM instantiation.
 
-Docker-only dependencies (langchain_community, libCRS, crete.agent) are
+Docker-only dependencies (langchain_litellm, libCRS, crete.agent) are
 imported lazily inside functions so the module can be imported for testing
 without those packages installed.
 """
@@ -46,17 +46,14 @@ def setup(source_dir: Path, config: dict[str, str]) -> None:
     """
     global _primary_llm, _backup_llm
 
-    from langchain_community.chat_models import ChatLiteLLM
+    from langchain_litellm import ChatLiteLLM
 
     llm_api_url = config.get("llm_api_url", "")
     llm_api_key = config.get("llm_api_key", "")
 
-    # Configure env vars for litellm's OpenAI provider. The openai/ prefix on
-    # model names tells litellm to use the OpenAI SDK, which reads OPENAI_API_BASE
-    # and OPENAI_API_KEY to determine the endpoint. ChatLiteLLM's constructor
-    # params (openai_api_base/openai_api_key) are NOT forwarded to litellm's
-    # completion() call in the deprecated langchain_community version, so env
-    # vars are the reliable way to route through the proxy.
+    # api_base/api_key are passed to the constructor below, which forwards them
+    # into litellm's completion() call. These env vars are a fallback for any
+    # code path that reaches the OpenAI SDK without them.
     os.environ["OPENAI_API_BASE"] = llm_api_url
     os.environ["OPENAI_API_KEY"] = llm_api_key
 
@@ -64,10 +61,14 @@ def setup(source_dir: Path, config: dict[str, str]) -> None:
     primary_model = os.environ.get("MULTI_RETRIEVAL_MODEL", "o4-mini")
     backup_model = os.environ.get("MULTI_RETRIEVAL_BACKUP_MODEL", "gemini-2.5-pro")
 
-    # The "openai/" prefix tells litellm to use the OpenAI-compatible protocol,
-    # routing through OPENAI_API_BASE. The proxy strips the prefix.
-    _primary_llm = ChatLiteLLM(model=f"openai/{primary_model}")
-    _backup_llm = ChatLiteLLM(model=f"openai/{backup_model}")
+    # The "openai/" prefix tells litellm to use the OpenAI-compatible protocol.
+    # The proxy strips the prefix.
+    _primary_llm = ChatLiteLLM(
+        model=f"openai/{primary_model}", api_base=llm_api_url, api_key=llm_api_key
+    )
+    _backup_llm = ChatLiteLLM(
+        model=f"openai/{backup_model}", api_base=llm_api_url, api_key=llm_api_key
+    )
 
     logger.info(
         "Multi-retrieval agent configured: primary=%s, backup=%s, api_base=%s",

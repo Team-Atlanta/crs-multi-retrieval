@@ -9,12 +9,12 @@ description = "CRS using Multi Retrieval LangGraph agent for autonomous vulnerab
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
-    "langchain-core",
-    "langchain-community",
-    "langgraph",
-    "litellm",
-    "ast-grep-py",
-    "pydantic",
+    "langchain-core>=1.0,<2",
+    "langchain-litellm>=0.7,<1",
+    "langgraph>=1.0,<2",
+    "litellm>=1.90,<2",
+    "ast-grep-py>=0.39,<1",
+    "pydantic>=2.10,<3",
 ]
 
 [project.scripts]

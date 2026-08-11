@@ -22,14 +22,16 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python3 \
     && ln -sf python3 /usr/bin/python
 
-# Python dependencies for multi-retrieval agent
+# Python dependencies for multi-retrieval agent. Major versions are bounded:
+# langchain 1.0 dropped ChatLiteLLM from langchain-community, so an unpinned
+# install silently breaks the agent's import.
 RUN pip3 install \
-    langchain-core \
-    langchain-community \
-    langgraph \
-    litellm \
-    ast-grep-py \
-    pydantic
+    "langchain-core>=1.0,<2" \
+    "langchain-litellm>=0.7,<1" \
+    "langgraph>=1.0,<2" \
+    "litellm>=1.90,<2" \
+    "ast-grep-py>=0.39,<1" \
+    "pydantic>=2.10,<3"
 
 # Git config
 RUN git config --global user.email "crs@oss-crs.dev" \
